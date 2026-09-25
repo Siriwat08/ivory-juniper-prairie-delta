@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: "Noto Sans Thai";
+        font-weight: 700;
+        src: url("fonts/NotoSansThai-Bold.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "Noto Sans Thai";
+        font-weight: 600;
+        src: url("fonts/NotoSansThai-SemiBold.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "Noto Sans";
+        font-weight: 700;
+        src: url("fonts/NotoSans-Bold.ttf") format("truetype");
+      }
+      @font-face {
+        font-family: "Noto Sans";
+        font-weight: 600;
+        src: url("fonts/NotoSans-SemiBold.ttf") format("truetype");
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #12233A;
+      }
+      .card {
+        position: relative;
+        width: 1200px;
+        height: 630px;
+        background: #12233A;
+        font-family: "Noto Sans Thai", "Noto Sans", sans-serif;
+      }
+      .photo {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 368px;
+        background: url("bg-waybill.jpg") center 82% / cover no-repeat;
+      }
+      .navy {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 268px;
+        background: #12233A;
+      }
+      .photo-fade {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 250px;
+        height: 90px;
+        background: linear-gradient(180deg, #12233A 0%, rgba(18, 35, 58, 0) 100%);
+        pointer-events: none;
+      }
+      .frame {
+        position: absolute;
+        inset: 18px;
+        border: 1px solid rgba(247, 244, 236, 0.16);
+        pointer-events: none;
+      }
+      .logos {
+        position: absolute;
+        top: 32px;
+        left: 52px;
+        right: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .logos img.phao { width: 76px; height: 76px; display: block; }
+      .logos img.scg { height: 48px; width: auto; display: block; }
+      .lockup {
+        position: absolute;
+        top: 118px;
+        left: 120px;
+        right: 120px;
+        text-align: center;
+        color: #F7F4EC;
+      }
+      .thai {
+        font-weight: 700;
+        font-size: 56px;
+        line-height: 1.08;
+        letter-spacing: 0.01em;
+        margin: 0;
+      }
+      .en {
+        font-family: "Noto Sans", "Noto Sans Thai", sans-serif;
+        font-weight: 700;
+        font-size: 34px;
+        line-height: 1.15;
+        letter-spacing: 0.04em;
+        margin: 4px 0 0;
+        color: #F3EEE4;
+      }
+      .hat {
+        width: 26px;
+        height: 22px;
+        margin: 10px auto 0;
+        display: block;
+      }
+      .rule {
+        width: 72px;
+        height: 3px;
+        background: #0B5BD3;
+        margin: 10px auto 12px;
+        border-radius: 2px;
+      }
+      .sub {
+        font-weight: 600;
+        font-size: 22px;
+        letter-spacing: 0.02em;
+        color: #F3EEE4;
+        opacity: 0.9;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="photo"></div>
+      <div class="navy"></div>
+      <div class="photo-fade"></div>
+      <div class="frame"></div>
+      <div class="logos">
+        <img class="phao" src="logo-phaopanya.png" alt="" />
+        <img class="scg" src="logo-scgjwd.png" alt="" />
+      </div>
+      <div class="lockup">
+        <p class="thai">เผ่าปัญญา Route Desk</p>
+        <svg class="hat" viewBox="0 0 32 24" aria-hidden="true">
+          <path fill="#F7F4EC" d="M4.5 17.2c0-2 1.1-3.3 2.2-4.2L4.2 6.6l5.6 4.7L16 4.6l6.2 6.7 5.6-4.7-2.5 6.4c1.1.9 2.2 2.2 2.2 4.2 0 2.2-4 3.6-8.7 3.6s-8.8-1.4-8.8-3.6z"/>
+          <circle cx="16" cy="5.6" r="1.2" fill="#C9A227"/>
+        </svg>
+        <div class="rule"></div>
+        <p class="sub">วางแผนเส้นทางและจุดพักรถ · SCGJWD</p>
+      </div>
+    </div>
+  </body>
+</html>

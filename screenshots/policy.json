@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/policy",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "เผ่าปัญญา Route Desk",
+      "hasCanvas": false,
+      "bodyTextLen": 2366,
+      "bodyTextHash": "4ab7ee345f43094fa17952e6c2b4ba7df00b855730d1dd4000ee4489c6371206",
+      "bodyTextPrefix": "เผ่าปัญญา Route Desk งานลูกค้า SCGJWD Logistics โต๊ะปฏิบัติการ ว",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/policy.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "เผ่าปัญญา Route Desk",
+      "hasCanvas": false,
+      "bodyTextLen": 2240,
+      "bodyTextHash": "504cf7209a25347eeb1ccfb76620b9da0dd0c6d34ed1827eadf17c1b30920869",
+      "bodyTextPrefix": "เผ่าปัญญา Route Desk งาน SCGJWD นโยบายบริษัทและช่องว่างก่อนใช้จร",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/policy-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/policy.json"
+}

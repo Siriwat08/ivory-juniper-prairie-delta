@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/trip/trip-sample-north",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "เผ่าปัญญา Route Desk",
+      "hasCanvas": false,
+      "bodyTextLen": 2831,
+      "bodyTextHash": "667f44b85341a129a432bf6840c83cabb83c374c64930232faf144a56c7c92dc",
+      "bodyTextPrefix": "เผ่าปัญญา Route Desk งานลูกค้า SCGJWD Logistics โต๊ะปฏิบัติการ ว",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/trip-desk.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "เผ่าปัญญา Route Desk",
+      "hasCanvas": false,
+      "bodyTextLen": 2705,
+      "bodyTextHash": "8dedc819a8aab7d98ef29ccbf65079cdc3de27d54ce6f884ed9e973ff6a09941",
+      "bodyTextPrefix": "เผ่าปัญญา Route Desk งาน SCGJWD PP-SCG-NORTH-01 · งาน SCGJWD วัง",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/trip-desk-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/trip-desk.json"
+}

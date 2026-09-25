@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans Thai", "Noto Sans Thai", "Sarabun", sans-serif;
+  --font-display: "Prompt", "IBM Plex Sans Thai", sans-serif;
+  --font-mono: "IBM Plex Sans Thai", ui-monospace, monospace;
+
+  --color-bg: #efe8d9;
+  --color-fg: #12233a;
+  --color-surface: #f7f1e4;
+  --color-surface-2: #e7ddc8;
+  --color-navy: #12233a;
+  --color-navy-fg: #f4efe4;
+  --color-muted: #5d6573;
+  --color-primary: #0b5bd3;
+  --color-primary-fg: #f7f4ec;
+  --color-border: #d4c9b2;
+  --color-ok: #1b6b46;
+  --color-ok-fg: #e7f4ec;
+  --color-warn: #8a5a10;
+  --color-warn-fg: #f8efd6;
+  --color-danger: #a61b1b;
+  --color-danger-fg: #fdecec;
+  --color-rest: #1f4d7a;
+  --color-rest-fg: #e7eef6;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 28px;
+
+  --shadow-waybill: 0 18px 40px -28px rgb(18 35 58 / 0.55);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+}
+
+.paper-grid {
+  background-color: var(--color-bg);
+  background-image:
+    linear-gradient(rgb(18 35 58 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(18 35 58 / 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.waybill {
+  background: var(--color-surface);
+  box-shadow: var(--shadow-waybill);
+  border: 1px solid var(--color-border);
+}
+
+.waybill-stub {
+  background-image: radial-gradient(circle at 0 12px, transparent 10px, var(--color-surface) 10.5px);
+  background-size: 12px 24px;
+  background-repeat: repeat-y;
+}
+
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: #dfe6dc;
+}
+
+.desk-marker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid #f7f1e4;
+  color: #f7f1e4;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 6px 14px rgb(18 35 58 / 0.28);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

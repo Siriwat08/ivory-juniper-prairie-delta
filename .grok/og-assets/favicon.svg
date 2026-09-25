@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="เผ่าปัญญา Route Desk">
+  <rect width="32" height="32" rx="7" fill="#12233A"/>
+  <!-- Bold 3-peak jester hat, even coords so it stays crisp at 16px -->
+  <path fill="#F7F4EC" d="M5 20.5 9 6h2l3 8 2-10 2 10 3-8h2L27 20.5c0 2.4-4.4 3.8-11 3.8s-11-1.4-11-3.8z"/>
+  <circle cx="16" cy="5.5" r="1.4" fill="#C9A227"/>
+  <!-- Route tick under the hat -->
+  <path d="M7 27.5h18" fill="none" stroke="#0B5BD3" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="16" cy="27.5" r="1.6" fill="#0B5BD3"/>
+</svg>

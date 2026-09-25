@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "เผ่าปัญญา Route Desk",
+      "hasCanvas": false,
+      "bodyTextLen": 1315,
+      "bodyTextHash": "35c30045967ab0e3e880430e9e7093be0d15c8343f13c90d2edd5723ca5f9b03",
+      "bodyTextPrefix": "เผ่าปัญญา Route Desk งานลูกค้า SCGJWD Logistics โต๊ะปฏิบัติการ ว",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "เผ่าปัญญา Route Desk",
+      "hasCanvas": false,
+      "bodyTextLen": 1189,
+      "bodyTextHash": "16654a2f992e015453b18f1ce930777af12a6b0e09b8d5c5463b64725f7cdc95",
+      "bodyTextPrefix": "เผ่าปัญญา Route Desk งาน SCGJWD หจก.เผ่าปัญญา ทรานสปอร์ต ลูกค้า ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
