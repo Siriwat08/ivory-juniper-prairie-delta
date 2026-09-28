@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AgentRouteImport } from './routes/agent'
+import { Route as DriveRouteImport } from './routes/drive'
 import { Route as PlanRouteImport } from './routes/plan'
 import { Route as PolicyRouteImport } from './routes/policy'
 import { Route as TripIdRouteImport } from './routes/trip.$id'
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
 const AgentRoute = AgentRouteImport.update({
   id: '/agent',
   path: '/agent',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DriveRoute = DriveRouteImport.update({
+  id: '/drive',
+  path: '/drive',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlanRoute = PlanRouteImport.update({
@@ -44,6 +50,7 @@ const TripIdRoute = TripIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/drive': typeof DriveRoute
   '/plan': typeof PlanRoute
   '/policy': typeof PolicyRoute
   '/trip/$id': typeof TripIdRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/drive': typeof DriveRoute
   '/plan': typeof PlanRoute
   '/policy': typeof PolicyRoute
   '/trip/$id': typeof TripIdRoute
@@ -59,21 +67,23 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/drive': typeof DriveRoute
   '/plan': typeof PlanRoute
   '/policy': typeof PolicyRoute
   '/trip/$id': typeof TripIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/agent' | '/plan' | '/policy' | '/trip/$id'
+  fullPaths: '/' | '/agent' | '/drive' | '/plan' | '/policy' | '/trip/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/agent' | '/plan' | '/policy' | '/trip/$id'
-  id: '__root__' | '/' | '/agent' | '/plan' | '/policy' | '/trip/$id'
+  to: '/' | '/agent' | '/drive' | '/plan' | '/policy' | '/trip/$id'
+  id: '__root__' | '/' | '/agent' | '/drive' | '/plan' | '/policy' | '/trip/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentRoute: typeof AgentRoute
+  DriveRoute: typeof DriveRoute
   PlanRoute: typeof PlanRoute
   PolicyRoute: typeof PolicyRoute
   TripIdRoute: typeof TripIdRoute
@@ -93,6 +103,13 @@ declare module '@tanstack/react-router' {
       path: '/agent'
       fullPath: '/agent'
       preLoaderRoute: typeof AgentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/drive': {
+      id: '/drive'
+      path: '/drive'
+      fullPath: '/drive'
+      preLoaderRoute: typeof DriveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/plan': {
@@ -122,6 +139,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentRoute: AgentRoute,
+  DriveRoute: DriveRoute,
   PlanRoute: PlanRoute,
   PolicyRoute: PolicyRoute,
   TripIdRoute: TripIdRoute,

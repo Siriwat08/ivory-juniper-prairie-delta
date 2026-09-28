@@ -140,4 +140,10 @@ export type Trip = {
   currentStopSeq: number;
   delayMin: number;
   policySnapshot: Policy;
+  /** เส้นทางจริงแยกช่วง (จาก OSRM) ใช้ฉายตำแหน่ง GPS */
+  legs?: RouteLeg[];
+  /** เวลาที่เริ่มขับรอบล่าสุด (null = ไม่ได้อยู่ระหว่างขับ) */
+  enrouteSince?: string | null;
+  /** เวลาที่เริ่มพักรอบล่าสุด (null = ไม่ได้อยู่ระหว่างพัก) */
+  restStartedAt?: string | null;
 };

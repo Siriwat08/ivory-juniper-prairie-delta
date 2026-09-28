@@ -5,6 +5,7 @@ import {
   Compass,
   MessageSquareText,
   ShieldAlert,
+  Truck,
 } from "lucide-react";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { useDesk } from "@/lib/store";
 import { incompleteGapCount } from "@/lib/engine/policy";
 
 const NAV = [
+  { to: "/drive", label: "โหมดคนขับ", short: "คนขับ", icon: Truck },
   { to: "/", label: "โต๊ะปฏิบัติการ", short: "โต๊ะ", icon: ClipboardList },
   { to: "/plan", label: "วางแผนเที่ยว", short: "วางแผน", icon: Compass },
   { to: "/agent", label: "Agent", short: "Agent", icon: MessageSquareText },
@@ -112,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="flex-1 px-4 py-5 pb-24 lg:px-8 lg:py-7 lg:pb-7">
           {children}
         </main>
-        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-border bg-surface/95 backdrop-blur-sm lg:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-border bg-surface/95 backdrop-blur-sm lg:hidden">
           {NAV.map((item) => {
             const active =
               item.to === "/"

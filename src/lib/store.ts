@@ -1,17 +1,39 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { uid } from "./utils";
-import { addMinutes } from "./format";
+import { addMinutes, formatClock } from "./format";
 import { DEFAULT_POLICY, policyFromPartial } from "./engine/policy";
 import { buildFallbackLegs, planTrip } from "./engine/rest-engine";
-import type { Place, Policy, RouteLeg, Trip, TripEventType, VehicleType } from "./engine/types";
+import { haversineKm } from "./engine/geo";
+import type {
+  Place,
+  PlanResult,
+  Policy,
+  RestStop,
+  RouteLeg,
+  Trip,
+  TripEventType,
+  VehicleType,
+} from "./engine/types";
 import { seedSampleTrip } from "./data/sample-trip";
+import { PLACES } from "./data/places";
 
 type ChatTurn = { id: string; role: "user" | "assistant"; content: string };
+
+export type SavedRoute = {
+  id: string;
+  title: string;
+  origin: Place;
+  waypoints: Place[];
+  destination: Place;
+  savedAt: string;
+  note?: string;
+};
 
 type AppState = {
   policy: Policy;
   trips: Trip[];
+  savedRoutes: SavedRoute[];
   activeTripId: string | null;
   chat: ChatTurn[];
   hydrated: boolean;
@@ -26,6 +48,8 @@ type AppState = {
     title?: string;
   }) => Trip;
   applyLegsAndPlan: (tripId: string, legs: RouteLeg[]) => void;
+  saveRouteFromTrip: (tripId: string, note?: string) => void;
+  deleteSavedRoute: (id: string) => void;
   setActive: (id: string | null) => void;
   pushEvent: (tripId: string, type: TripEventType, label: string, extraMin?: number) => void;
   startTrip: (tripId: string) => void;
@@ -34,6 +58,7 @@ type AppState = {
   finishRest: (tripId: string) => void;
   completeTrip: (tripId: string) => void;
   advanceClock: (tripId: string, minutes: number) => void;
+  replaceNextRest: (tripId: string, newRest: RestStop) => void;
   addChat: (role: "user" | "assistant", content: string) => void;
   resetChat: () => void;
   resetDemo: () => void;
@@ -59,11 +84,60 @@ function event(type: TripEventType, label: string, extraMin?: number) {
   return { id: uid("ev"), type, at: new Date().toISOString(), label, extraMin };
 }
 
+/** เวลาขับต่อเนื่องจริง ณ ตอนนี้ (นับจาก enrouteSince แบบเรียลไทม์) */
+export function continuousNowOf(trip: Trip): number {
+  if (trip.status === "enroute" && trip.enrouteSince) {
+    const extra = (Date.now() - new Date(trip.enrouteSince).getTime()) / 60000;
+    return trip.continuousMin + Math.max(0, extra);
+  }
+  return trip.continuousMin;
+}
+
+/** เวลาพักที่เหลือ (นาที) — null ถ้าไม่ได้อยู่ระหว่างพัก */
+export function restRemainingMin(trip: Trip, policy: Policy): number | null {
+  if (trip.status !== "resting" || !trip.restStartedAt) return null;
+  const elapsed = (Date.now() - new Date(trip.restStartedAt).getTime()) / 60000;
+  return Math.max(0, policy.restMin - elapsed);
+}
+
+function seedSavedRoutes(): SavedRoute[] {
+  const p = (id: string) => PLACES.find((x) => x.id === id);
+  const origin = p("scgjwd-wangnoi");
+  const nakhonsawan = p("nakhonsawan");
+  const chiangmai = p("chiangmai");
+  const lcb = p("scgjwd-lcb");
+  const routes: SavedRoute[] = [];
+  if (origin && nakhonsawan && chiangmai) {
+    routes.push({
+      id: "route-seed-north",
+      title: "วังน้อย → นครสวรรค์ → เชียงใหม่",
+      origin,
+      waypoints: [nakhonsawan],
+      destination: chiangmai,
+      savedAt: new Date().toISOString(),
+      note: "เส้นทางเหนือ 586 กม. — เที่ยวเดิมของบริษัท",
+    });
+  }
+  if (origin && lcb) {
+    routes.push({
+      id: "route-seed-lcb",
+      title: "วังน้อย → แหลมฉบัง",
+      origin,
+      waypoints: [],
+      destination: lcb,
+      savedAt: new Date().toISOString(),
+      note: "เที่ยวสั้น ส่งของคลังแหลมฉบัง",
+    });
+  }
+  return routes;
+}
+
 export const useDesk = create<AppState>()(
   persist(
     (set, get) => ({
       policy: DEFAULT_POLICY,
       trips: [seedSampleTrip(DEFAULT_POLICY)],
+      savedRoutes: seedSavedRoutes(),
       activeTripId: "trip-sample-north",
       chat: [
         {
@@ -107,11 +181,14 @@ export const useDesk = create<AppState>()(
           status: "planned",
           vehicleType: policy.vehicleType,
           plan,
+          legs: buildFallbackLegs(origin, waypoints, destination, policy),
           events: [event("planned", "สร้างแผนเดินทาง")],
           continuousMin: 0,
           clock: startTime,
           currentStopSeq: 1,
           delayMin: 0,
+          enrouteSince: null,
+          restStartedAt: null,
           policySnapshot: policy,
         };
         set({ trips: [trip, ...get().trips], activeTripId: trip.id });
@@ -132,9 +209,27 @@ export const useDesk = create<AppState>()(
               continuousMin: t.continuousMin,
               delayMin: t.delayMin,
             });
-            return { ...t, plan };
+            return { ...t, plan, legs };
           }),
         });
+      },
+      saveRouteFromTrip: (tripId, note) => {
+        const t = get().trips.find((x) => x.id === tripId);
+        if (!t) return;
+        if (get().savedRoutes.some((r) => r.title === t.title)) return;
+        const route: SavedRoute = {
+          id: uid("route"),
+          title: t.title,
+          origin: t.origin,
+          waypoints: t.waypoints,
+          destination: t.destination,
+          savedAt: new Date().toISOString(),
+          note,
+        };
+        set({ savedRoutes: [route, ...get().savedRoutes] });
+      },
+      deleteSavedRoute: (id) => {
+        set({ savedRoutes: get().savedRoutes.filter((r) => r.id !== id) });
       },
       setActive: (id) => set({ activeTripId: id }),
       pushEvent: (tripId, type, label, extraMin) => {
@@ -145,17 +240,33 @@ export const useDesk = create<AppState>()(
         });
       },
       startTrip: (tripId) => {
+        const policy = get().policy;
+        const nowIso = new Date().toISOString();
         set({
-          trips: get().trips.map((t) =>
-            t.id === tripId
-              ? {
-                  ...t,
-                  status: "enroute",
-                  continuousMin: 0,
-                  events: [event("depart", "เริ่มออกเดินทาง"), ...t.events],
-                }
-              : t,
-          ),
+          trips: get().trips.map((t) => {
+            if (t.id !== tripId) return t;
+            // เริ่มจริงตอนนี้ — คำนวณแผนใหม่โดยยึดเวลาเริ่มจริงเป็นหลัก
+            const plan = planTrip({
+              origin: t.origin,
+              waypoints: t.waypoints,
+              destination: t.destination,
+              startTime: new Date(nowIso),
+              policy: { ...policy, vehicleType: t.vehicleType },
+              legs: t.legs ?? buildFallbackLegs(t.origin, t.waypoints, t.destination, policy),
+              continuousMin: 0,
+              delayMin: t.delayMin,
+            });
+            return {
+              ...t,
+              status: "enroute",
+              continuousMin: 0,
+              clock: nowIso,
+              enrouteSince: nowIso,
+              restStartedAt: null,
+              plan,
+              events: [event("depart", "เริ่มออกเดินทาง — เริ่มนับเวลาขับ 0 นาที"), ...t.events],
+            };
+          }),
         });
       },
       addDelay: (tripId, minutes) => {
@@ -175,44 +286,66 @@ export const useDesk = create<AppState>()(
       },
       startRest: (tripId) => {
         set({
-          trips: get().trips.map((t) =>
-            t.id === tripId
-              ? {
-                  ...t,
-                  status: "resting",
-                  events: [event("rest-start", "เริ่มพัก — ยังไม่รีเซ็ตเวลาขับจนกว่าจะครบ"), ...t.events],
-                }
-              : t,
-          ),
+          trips: get().trips.map((t) => {
+            if (t.id !== tripId) return t;
+            const nowIso = new Date().toISOString();
+            // ปิดรอบขับ: รวมเวลาขับที่วิ่งจริงมาเก็บใน continuousMin ก่อนเริ่มพัก
+            const folded = t.enrouteSince
+              ? t.continuousMin + (Date.now() - new Date(t.enrouteSince).getTime()) / 60000
+              : t.continuousMin;
+            return {
+              ...t,
+              status: "resting",
+              continuousMin: Math.round(folded),
+              enrouteSince: null,
+              restStartedAt: nowIso,
+              clock: nowIso,
+              events: [event("rest-start", "เริ่มพัก — นับถอยหลัง 30 นาที"), ...t.events],
+            };
+          }),
         });
       },
       finishRest: (tripId) => {
         const policy = get().policy;
+        const nowIso = new Date().toISOString();
         set({
           trips: get().trips.map((t) => {
             if (t.id !== tripId) return t;
             const continuousMin = policy.restResetsDriving ? 0 : t.continuousMin;
-            const clock = addMinutes(new Date(t.clock), policy.restMin).toISOString();
-            return replan(
+            const replanned = replan(
               {
                 ...t,
                 status: "enroute",
-                delayMin: 0,
-                events: [event("rest-done", `พักครบ ${policy.restMin} นาที — เริ่มรอบขับใหม่`), ...t.events],
+                enrouteSince: nowIso,
+                restStartedAt: null,
+                events: [
+                  event("rest-done", `พักครบ ${policy.restMin} นาที — ออกเดินทางต่อ ${formatClock(nowIso)}`),
+                  ...t.events,
+                ],
               },
               policy,
-              { continuousMin, delayMin: 0, clock },
+              { continuousMin, delayMin: 0, clock: nowIso },
             );
+            return replanned;
           }),
         });
       },
       completeTrip: (tripId) => {
         set({
-          trips: get().trips.map((t) =>
-            t.id === tripId
-              ? { ...t, status: "completed", events: [event("arrive", "ถึงปลายทาง"), ...t.events] }
-              : t,
-          ),
+          trips: get().trips.map((t) => {
+            if (t.id !== tripId) return t;
+            const folded = t.enrouteSince
+              ? t.continuousMin + (Date.now() - new Date(t.enrouteSince).getTime()) / 60000
+              : t.continuousMin;
+            return {
+              ...t,
+              status: "completed",
+              continuousMin: Math.round(folded),
+              enrouteSince: null,
+              restStartedAt: null,
+              events: [event("arrive", "ถึงปลายทาง"), ...t.events],
+            };
+          }),
         });
       },
       advanceClock: (tripId, minutes) => {
@@ -220,17 +353,25 @@ export const useDesk = create<AppState>()(
         set({
           trips: get().trips.map((t) => {
             if (t.id !== tripId || t.status === "completed") return t;
-            if (t.status === "resting") {
-              const clock = addMinutes(new Date(t.clock), minutes).toISOString();
-              return { ...t, clock, events: [event("progress", `จำลองเวลาพัก +${minutes} นาที`), ...t.events] };
-            }
-            const continuousMin = t.continuousMin + minutes;
             const clock = addMinutes(new Date(t.clock), minutes).toISOString();
-            const over = continuousMin >= policy.maxContinuousMin;
+            if (t.status === "resting") {
+              // จำลองเวลาพักผ่านไป = เลื่อนเวลาเริ่มพักถอยหลัง
+              const restStartedAt = t.restStartedAt
+                ? new Date(new Date(t.restStartedAt).getTime() - minutes * 60000).toISOString()
+                : t.restStartedAt;
+              return { ...t, clock, restStartedAt, events: [event("progress", `จำลองเวลาพัก +${minutes} นาที`), ...t.events] };
+            }
+            // จำลองเวลาขับผ่านไป = เลื่อนเวลาเริ่มขับถอยหลัง (เข็มนาฬิกาวิ่งเร็วขึ้น)
+            const enrouteSince = t.enrouteSince
+              ? new Date(new Date(t.enrouteSince).getTime() - minutes * 60000).toISOString()
+              : t.enrouteSince;
+            const newCont = t.enrouteSince ? continuousNowOf(t) + minutes : t.continuousMin + minutes;
+            const over = newCont >= policy.maxContinuousMin;
             return {
               ...t,
-              continuousMin,
               clock,
+              enrouteSince,
+              continuousMin: t.enrouteSince ? t.continuousMin : newCont,
               events: [
                 event(
                   "progress",
@@ -242,6 +383,14 @@ export const useDesk = create<AppState>()(
               ],
             };
           }),
+        });
+      },
+      replaceNextRest: (tripId, newRest) => {
+        const policy = get().policy;
+        set({
+          trips: get().trips.map((t) =>
+            t.id === tripId ? applyRestReplacement(t, policy, newRest) : t,
+          ),
         });
       },
       addChat: (role, content) => {
@@ -263,6 +412,7 @@ export const useDesk = create<AppState>()(
       partialize: (s) => ({
         policy: s.policy,
         trips: s.trips,
+        savedRoutes: s.savedRoutes,
         activeTripId: s.activeTripId,
         chat: s.chat.slice(-20),
       }),
@@ -275,4 +425,83 @@ export const useDesk = create<AppState>()(
 
 export function useActiveTrip() {
   return useDesk((s) => s.trips.find((t) => t.id === s.activeTripId) ?? s.trips[0] ?? null);
+}
+
+/** เปลี่ยนจุดพักถัดไป (จุดพักแรกที่ยังไม่ถึง) เป็นจุดใหม่ แล้วเลื่อนเวลาช่วงหลังให้สอดคล้อง */
+function applyRestReplacement(trip: Trip, policy: Policy, newRest: RestStop): Trip {
+  const nowIso = new Date().toISOString();
+  const stops = [...trip.plan.stops];
+  const idx = stops.findIndex((s) => s.type === "rest" && s.start > nowIso);
+  if (idx < 0) return trip;
+
+  const oldRest = stops[idx]!;
+  const prevDrive = stops[idx - 1];
+  const fromPlace = idx >= 2 ? stops[idx - 2]!.place : trip.origin;
+
+  // ประมาณการขับไปจุดพักใหม่จากระยะทางตรง × 1.3 (คูณเผื่อถนนโค้ง)
+  const roadKm = haversineKm(fromPlace, newRest) * 1.3;
+  const newDriveMin = Math.max(5, (roadKm / Math.max(30, policy.avgHighwayKmh)) * 60);
+  const oldDriveMin = prevDrive?.driveMin ?? 0;
+  const deltaMin = newDriveMin + policy.restMin - (oldDriveMin + oldRest.restMin);
+
+  if (prevDrive) {
+    stops[idx - 1] = {
+      ...prevDrive,
+      title: `ขับ (ประมาณการ) → ${newRest.name}`,
+      distanceKm: roadKm,
+      driveMin: newDriveMin,
+      confidence: "estimated",
+      note: "ระยะประมาณการหลังเปลี่ยนจุดพัก ณ เวลาที่ยืนยัน",
+    };
+  }
+
+  const driveEnd = prevDrive
+    ? addMinutes(new Date(stops[idx - 1]!.start), newDriveMin).toISOString()
+    : oldRest.start;
+  const restEnd = addMinutes(new Date(driveEnd), policy.restMin).toISOString();
+  stops[idx] = {
+    ...oldRest,
+    title: `พัก ${policy.restMin} นาที · ${newRest.name}`,
+    place: { ...newRest, kind: "rest" },
+    start: driveEnd,
+    end: restEnd,
+    note: `เปลี่ยนจุดพักจาก ${oldRest.place.name} — ตัวเลขหลังจากนี้เป็นประมาณการ`,
+    confidence: newRest.verification === "routed" ? "routed" : "must-verify",
+    onRoute: true,
+  };
+
+  let prevEnd = restEnd;
+  for (let j = idx + 1; j < stops.length; j++) {
+    const s = stops[j]!;
+    // คงความยาวช่วงเดิมไว้ (วัดจาก start/end เดิม) แล้วเลื่อนเวลาตามจุดพักใหม่
+    const dur = (new Date(s.end).getTime() - new Date(s.start).getTime()) / 60000;
+    const start = prevEnd;
+    const end = addMinutes(new Date(start), dur).toISOString();
+    stops[j] = { ...s, start, end };
+    prevEnd = end;
+  }
+
+  const plan: PlanResult = {
+    ...trip.plan,
+    stops,
+    totalDistanceKm: stops.reduce((sum, x) => sum + x.distanceKm, 0),
+    totalDriveMin: stops.reduce((sum, x) => sum + x.driveMin, 0),
+    eta: stops[stops.length - 1]?.end ?? trip.plan.eta,
+    risk: "watch",
+    riskNote: "เปลี่ยนจุดพักกลางทางแล้ว — ตัวเลขช่วงหลังเป็นประมาณการ ควรยืนยันจุดพักจริงอีกครั้ง",
+  };
+
+  return {
+    ...trip,
+    plan,
+    delayMin: trip.delayMin + Math.max(0, deltaMin),
+    events: [
+      event(
+        "replan",
+        `เปลี่ยนจุดพักเป็น ${newRest.name} (เดิม: ${oldRest.place.name})`,
+        Math.max(0, Math.round(deltaMin)),
+      ),
+      ...trip.events,
+    ],
+  };
 }

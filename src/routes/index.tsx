@@ -35,6 +35,9 @@ function Home() {
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Button asChild variant="navy">
+              <Link to="/drive">เปิดโหมดคนขับ</Link>
+            </Button>
+            <Button asChild variant="outline">
               <Link to="/plan">วางแผนเที่ยวใหม่</Link>
             </Button>
             <Button asChild variant="outline">
