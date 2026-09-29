@@ -2,7 +2,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { haversineKm, nearestOnPolyline, pointAlongPolyline, polylineLengthKm } from "@/lib/engine/geo";
 import { REST_STOPS } from "@/lib/data/rest-stops";
-import type { Place, Policy, RestStop, RouteLeg, Trip } from "@/lib/engine/types";
+import { googleRestStops, googleRouteEta, type GooglePlaceStop } from "@/lib/maps/google";
+import type { Place, PlanStop, Policy, RestStop, RouteLeg, Trip } from "@/lib/engine/types";
 
 /* ============================================================
  * ระบบเฝ้าระวัง GPS สำหรับโหมดคนขับ
@@ -56,6 +57,10 @@ export type WatchdogResult = {
   destinationReachable: boolean;
   message: string;
   alternatives: RestStop[];
+  /** "google" = เวลาถึงคำนวณจากข้อมูลรถติดจริงของ Google Routes API */
+  etaSource: "estimate" | "google";
+  /** ข้อความ error ล่าสุดจาก Google (ถ้ามี — ระบบยังทำงานด้วยค่าประมาณตามเส้นทาง) */
+  googleError?: string;
 };
 
 /* ---------------- เส้นทางเต็มของเที่ยววิ่ง ---------------- */
@@ -291,7 +296,175 @@ export function runWatchdog(
     destinationReachable,
     message,
     alternatives,
+    etaSource: "estimate",
   };
+}
+
+/* ---------------- เสริมความแม่นด้วย Google (รถติดจริง + จุดพักจริง) ---------------- */
+
+function googleKeyOrNull(): string | undefined {
+  const s = useGpsSettings.getState();
+  if (!s.googleEnabled) return undefined;
+  const key = s.googleMapsKey.trim();
+  // คืน undefined ได้ — ถ้าฝั่งเซิร์ฟเวอร์ตั้ง env GOOGLE_MAPS_API_KEY ไว้จะใช้จาก env แทน
+  return key || undefined;
+}
+
+/** จุดพักถัดไปที่ยังไม่ผ่านตำแหน่งรถ (ตรรกะเดียวกับ runWatchdog) */
+function nextRestAhead(trip: Trip, projFrac: number): { stop: PlanStop; frac: number } | null {
+  const geom = tripPolyline(trip);
+  const rests = trip.plan.stops
+    .filter((s) => s.type === "rest")
+    .map((s) => ({ stop: s, frac: nearestOnPolyline(geom, s.place).fraction }))
+    .sort((a, b) => a.frac - b.frac);
+  return rests.find((r) => r.frac > projFrac + 0.004) ?? null;
+}
+
+/**
+ * ค้นหาจุดพักจริงจาก Google Places บนช่วงเส้นทางที่รถไปทันภายในเวลาขับที่เหลือ
+ * แล้วรวมกับจุดพักจากคลังข้อมูลเดิม (ตัดซ้ำระยะใกล้กัน < 1.5 กม.)
+ */
+async function googleAlternatives(
+  trip: Trip,
+  projFrac: number,
+  remainingDriveMin: number,
+  policy: Policy,
+  geom: [number, number][],
+  totalKm: number,
+  existing: RestStop[],
+): Promise<RestStop[]> {
+  const speed = Math.max(20, policy.avgHighwayKmh);
+  const budgetKm = Math.max(0, remainingDriveMin - policy.bufferMin) * (speed / 60);
+  const ceilingFrac = Math.min(0.999, projFrac + budgetKm / Math.max(1, totalKm));
+  if (ceilingFrac <= projFrac + 0.005) return existing;
+
+  const midFrac = (projFrac + ceilingFrac) / 2;
+  const probeA = pointAlongPolyline(geom, midFrac);
+  const probeB = pointAlongPolyline(geom, ceilingFrac);
+  const apiKey = googleKeyOrNull();
+
+  const results = await Promise.all([
+    googleRestStops({ data: { lat: probeA[0], lng: probeA[1], radiusM: 10000, apiKey } }).catch(() => null),
+    googleRestStops({ data: { lat: probeB[0], lng: probeB[1], radiusM: 10000, apiKey } }).catch(() => null),
+  ]);
+
+  const byId = new Map<string, GooglePlaceStop>();
+  for (const r of results) {
+    if (r && r.ok) for (const s of r.stops) byId.set(s.id, s);
+  }
+
+  const candidates: { stop: RestStop; frac: number }[] = [];
+  for (const s of byId.values()) {
+    const proj = nearestOnPolyline(geom, { lat: s.lat, lng: s.lng });
+    // ต้องอยู่ข้างหน้ารถ และไม่เกินเพดานระยะที่ไปทัน
+    if (proj.fraction <= projFrac + 0.004 || proj.fraction > ceilingFrac + 0.02) continue;
+    if (proj.distKm > 12) continue;
+    // ตัดซ้ำกับจุดพักในคลังเดิม (แค่ ~1.5 กม. ถือว่าเป็นที่เดียวกัน)
+    const dupOfCatalog = existing.some(
+      (c) => haversineKm({ lat: s.lat, lng: s.lng }, c) < 1.5,
+    );
+    if (dupOfCatalog) continue;
+    const etaMin = ((proj.fraction - projFrac) * totalKm) / speed;
+    const bits = [
+      `ไปทันในเวลาที่เหลือ · เบี่ยง ~${proj.distKm.toFixed(1)} กม. · ~${Math.round(etaMin)} นาที`,
+      s.rating != null ? `★ ${s.rating.toFixed(1)}` : null,
+      s.openNow != null ? (s.openNow ? "เปิดอยู่" : "ปิดแล้ว") : null,
+    ].filter(Boolean);
+    candidates.push({
+      frac: proj.fraction,
+      stop: {
+        id: `g-${s.id}`,
+        name: s.name,
+        address: s.address || undefined,
+        lat: s.lat,
+        lng: s.lng,
+        truckOk: false,
+        facilities: ["ปั๊มน้ำมัน"],
+        verification: "must-verify",
+        note: bits.join(" · "),
+        kind: "rest",
+      },
+    });
+  }
+
+  const existingWithFrac = existing.map((s) => ({
+    frac: nearestOnPolyline(geom, s).fraction,
+    stop: s,
+  }));
+  return [...candidates, ...existingWithFrac]
+    .sort((a, b) => a.frac - b.frac)
+    .slice(0, 6)
+    .map((x) => x.stop);
+}
+
+/**
+ * เรียก Google Routes API ตรวจเวลาถึงจุดพักถัดไป/ปลายทางด้วยข้อมูลรถติดจริง
+ * ถ้าไปไม่ทัน → ยกระดับเตือนเป็น act + หาจุดพักจริงจาก Google Places ให้ทันที
+ * ทุกกรณีถ้า Google ล่ม/key มีปัญหา ระบบยังใช้ผลคำนวณจากเส้นทางเดิม (fallback ปลอดภัย)
+ */
+async function enrichWithGoogle(
+  trip: Trip,
+  pos: GpsPosition,
+  wd: WatchdogResult,
+  policy: Policy,
+  continuousNow: number,
+): Promise<WatchdogResult> {
+  const apiKey = googleKeyOrNull();
+  const geom = tripPolyline(trip);
+  const totalKm = polylineLengthKm(geom);
+  const proj = nearestOnPolyline(geom, pos);
+  const remainingDriveMin = Math.max(0, policy.maxContinuousMin - continuousNow);
+  const next = nextRestAhead(trip, proj.fraction);
+  const target = next ? next.stop.place : trip.destination;
+
+  const r = await googleRouteEta({
+    data: {
+      origin: { lat: pos.lat, lng: pos.lng },
+      destination: { lat: target.lat, lng: target.lng },
+      apiKey,
+    },
+  }).catch(() => null);
+
+  if (!r) return { ...wd, googleError: "เรียก Google Routes API ไม่สำเร็จ" };
+  if (!r.ok) return { ...wd, googleError: r.error };
+
+  const etaMin = r.durationMin;
+  const out: WatchdogResult = { ...wd, etaSource: "google", googleError: undefined };
+
+  if (next) {
+    out.nextRestEtaMin = etaMin;
+    out.nextRestReachable = etaMin + policy.bufferMin <= remainingDriveMin;
+    if (!out.nextRestReachable) {
+      out.level = "act";
+      out.message = `ข้อมูลรถติดจริง (Google): จุดพัก "${next.stop.place.name}" ใช้เวลา ~${Math.round(etaMin)} นาที แต่เวลาขับที่เหลือ ${Math.round(remainingDriveMin)} นาที — ต้องเลือกจุดพักใหม่ก่อนออกเดินทางต่อ`;
+    } else {
+      const baseEta = wd.nextRestEtaMin ?? etaMin;
+      if (out.level === "ok" && etaMin > baseEta + 10) {
+        out.level = "watch";
+        out.message = `ข้อมูลรถติดจริง (Google): ไปถึงจุดพักใช้ ~${Math.round(etaMin)} นาที (ช้ากว่าแผน ~${Math.round(etaMin - baseEta)} นาที) — เฝ้าดูต่อเนื่อง`;
+      }
+    }
+  } else {
+    out.etaDestinationMin = etaMin;
+    out.destinationReachable = etaMin + policy.bufferMin <= remainingDriveMin;
+    if (!out.destinationReachable) {
+      out.level = "act";
+      out.message = `ข้อมูลรถติดจริง (Google): ปลายทางใช้เวลา ~${Math.round(etaMin)} นาที แต่เวลาขับที่เหลือ ${Math.round(remainingDriveMin)} นาที — ต้องหาจุดพักก่อน`;
+    }
+  }
+
+  if (out.level === "act") {
+    out.alternatives = await googleAlternatives(
+      trip,
+      proj.fraction,
+      remainingDriveMin,
+      policy,
+      geom,
+      totalKm,
+      out.alternatives,
+    );
+  }
+  return out;
 }
 
 /* ---------------- Stores ---------------- */
@@ -301,9 +474,14 @@ type GpsSettingsState = {
   apiConfig: GpsApiConfig;
   telegramBotToken: string;
   telegramChatId: string;
+  /** Google Maps API key จากหน้าตั้งค่า (ถ้าว่างจะใช้ env GOOGLE_MAPS_API_KEY ฝั่งเซิร์ฟเวอร์) */
+  googleMapsKey: string;
+  /** เปิดใช้ข้อมูลรถติดจริง + จุดพักจริงจาก Google */
+  googleEnabled: boolean;
   setMode: (m: GpsMode) => void;
   setApiConfig: (c: Partial<GpsApiConfig>) => void;
   setTelegram: (botToken: string, chatId: string) => void;
+  setGoogle: (key: string, enabled: boolean) => void;
 };
 
 function getApiConfig(): GpsApiConfig {
@@ -317,9 +495,12 @@ export const useGpsSettings = create<GpsSettingsState>()(
       apiConfig: DEFAULT_GPS_API_CONFIG,
       telegramBotToken: "",
       telegramChatId: "",
+      googleMapsKey: "",
+      googleEnabled: false,
       setMode: (mode) => set({ mode }),
       setApiConfig: (c) => set({ apiConfig: { ...getApiConfig(), ...c } }),
       setTelegram: (telegramBotToken, telegramChatId) => set({ telegramBotToken, telegramChatId }),
+      setGoogle: (googleMapsKey, googleEnabled) => set({ googleMapsKey, googleEnabled }),
     }),
     {
       name: "phaopanya-gps-settings",
@@ -328,6 +509,8 @@ export const useGpsSettings = create<GpsSettingsState>()(
         apiConfig: s.apiConfig,
         telegramBotToken: s.telegramBotToken,
         telegramChatId: s.telegramChatId,
+        googleMapsKey: s.googleMapsKey,
+        googleEnabled: s.googleEnabled,
       }),
     },
   ),
@@ -386,13 +569,16 @@ export async function checkGpsNow(
     } else {
       pos = await apiPosition(apiConfig);
     }
-    const wd = runWatchdog(
+    const wdBase = runWatchdog(
       trip,
       pos,
       policy,
       continuousNow,
       mode === "demo" ? new Date(trip.clock) : nowAt,
     );
+    const wd = useGpsSettings.getState().googleEnabled
+      ? await enrichWithGoogle(trip, pos, wdBase, policy, continuousNow)
+      : wdBase;
     live.setPosition(pos);
     live.setWatchdog(wd);
     live.setStatus("idle", null);

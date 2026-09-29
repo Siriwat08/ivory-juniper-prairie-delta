@@ -26,6 +26,7 @@ import {
 } from "@/lib/gps/gps";
 import { alertActBeep, alertWatchBeep } from "@/lib/gps/alerts";
 import { sendTelegram } from "@/lib/notify/telegram";
+import { googleTestConnection } from "@/lib/maps/google";
 import { formatDateTime } from "@/lib/format";
 import type { Policy, RestStop, Trip } from "@/lib/engine/types";
 
@@ -278,10 +279,20 @@ export function DrivingStep({
               <TriangleAlert className={`mt-0.5 size-5 ${wd.level === "watch" ? "text-warn" : "text-ok-fg"}`} />
             )}
             <div className="min-w-0 flex-1">
-              <p className="font-semibold">
-                {wd.level === "act" ? "ต้องดำเนินการทันที" : wd.level === "watch" ? "เฝ้าระวัง" : "สถานะปกติ"}
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold">
+                  {wd.level === "act" ? "ต้องดำเนินการทันที" : wd.level === "watch" ? "เฝ้าระวัง" : "สถานะปกติ"}
+                </p>
+                {wd.etaSource === "google" ? (
+                  <Badge tone="primary">เวลาจากข้อมูลรถติดจริง (Google)</Badge>
+                ) : null}
+              </div>
               <p className="mt-1 text-sm leading-relaxed">{wd.message}</p>
+              {wd.googleError ? (
+                <p className="mt-1 text-xs text-muted">
+                  Google: {wd.googleError} — ชั่วคราวใช้การประมาณจากเส้นทางแทน
+                </p>
+              ) : null}
               <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted">
                 <span>ความคืบหน้า {Math.round(wd.progressFrac * 100)}%</span>
                 <span>· ล่าช้า ~{Math.round(wd.delayMin)} นาที</span>
@@ -433,6 +444,7 @@ export function DrivingStep({
                       <span className="block font-medium">{a.name}</span>
                       <span className="block text-xs text-muted">
                         {a.note}
+                        {a.address ? ` · ${a.address}` : ""}
                         {a.highway ? ` · ${a.highway}` : ""}
                       </span>
                     </span>
@@ -474,6 +486,9 @@ function GpsSettingsPanel({ onSaved }: { onSaved: () => void }) {
   const botToken = useGpsSettings((s) => s.telegramBotToken);
   const chatId = useGpsSettings((s) => s.telegramChatId);
   const setTelegram = useGpsSettings((s) => s.setTelegram);
+  const googleMapsKey = useGpsSettings((s) => s.googleMapsKey);
+  const googleEnabled = useGpsSettings((s) => s.googleEnabled);
+  const setGoogle = useGpsSettings((s) => s.setGoogle);
 
   const [url, setUrl] = useState(apiConfig.url);
   const [method, setMethod] = useState(apiConfig.method);
@@ -484,6 +499,10 @@ function GpsSettingsPanel({ onSaved }: { onSaved: () => void }) {
   const [speedPath, setSpeedPath] = useState(apiConfig.speedPath);
   const [token, setToken] = useState(botToken);
   const [chat, setChat] = useState(chatId);
+  const [googleKey, setGoogleKey] = useState(googleMapsKey);
+  const [googleOn, setGoogleOn] = useState(googleEnabled);
+  const [googleTesting, setGoogleTesting] = useState(false);
+  const [googleTestNote, setGoogleTestNote] = useState<string | null>(null);
 
   return (
     <div className="mt-4 space-y-4 rounded-2xl border border-border bg-surface-2/40 p-4 text-sm">
@@ -533,12 +552,64 @@ function GpsSettingsPanel({ onSaved }: { onSaved: () => void }) {
         </div>
       </div>
 
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-medium">Google Maps — รถติดจริง + จุดพักจริง</p>
+          <label className="flex cursor-pointer items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={googleOn}
+              onChange={(e) => setGoogleOn(e.target.checked)}
+            />
+            เปิดใช้งาน
+          </label>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          เปิดแล้วระบบจะเช็คเวลาถึงจุดพักด้วยข้อมูลรถติดจริง (Routes API) และค้นหาปั๊มน้ำมันจริง
+          ใกล้เส้นทางตอนไปไม่ทัน (Places API) — ต้องเปิด API สองตัวนี้ใน Google Cloud Console
+          สำหรับ key นี้ด้วย ถ้าไม่กรอก key ที่นี่ ระบบจะใช้ GOOGLE_MAPS_API_KEY จากฝั่งเซิร์ฟเวอร์แทน
+        </p>
+        <div className="mt-3 space-y-2">
+          <Input
+            type="password"
+            placeholder="Google Maps API key (AIza...)"
+            value={googleKey}
+            onChange={(e) => setGoogleKey(e.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={googleTesting}
+              onClick={() => {
+                setGoogleTesting(true);
+                setGoogleTestNote(null);
+                void googleTestConnection({ data: { apiKey: googleKey.trim() || undefined } })
+                  .then((r) => {
+                    setGoogleTestNote(
+                      r.ok
+                        ? `ผ่าน! เจอจุดพักจริง ${r.stops.length} จุดรอบพื้นที่ทดสอบ (ปตท. วังน้อย)`
+                        : `ยังไม่ผ่าน: ${r.error}`,
+                    );
+                  })
+                  .catch(() => setGoogleTestNote("ยังไม่ผ่าน: เรียก Google API ไม่สำเร็จ"))
+                  .finally(() => setGoogleTesting(false));
+              }}
+            >
+              {googleTesting ? "กำลังทดสอบ..." : "ทดสอบ key"}
+            </Button>
+            {googleTestNote ? <p className="min-w-0 text-xs text-muted">{googleTestNote}</p> : null}
+          </div>
+        </div>
+      </div>
+
       <Button
         variant="navy"
         size="sm"
         onClick={() => {
           setApiConfig({ url, method, headersJson, bodyJson, latPath, lngPath, speedPath });
           setTelegram(token.trim(), chat.trim());
+          setGoogle(googleKey.trim(), googleOn);
           onSaved();
         }}
       >
