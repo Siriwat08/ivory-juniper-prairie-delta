@@ -88,7 +88,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-BGnLTvR9.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-acEQ6K9G.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -110,11 +110,35 @@ async function getStartManifest(matchedRoutes) {
 var manifest = {
 	"081c4b3ee2d8d52d01e076e1621a10e1d70a3a069a0c9ad08298cb9ddbab5c28": {
 		functionName: "askRouteAgent_createServerFn_handler",
-		importer: () => import("./chat-CaAI5n_A.mjs")
+		importer: () => import("./chat-Dj3BNyze.mjs")
+	},
+	"28c758c1be18b8b64a81aa4c7f1a12703689f3d1e956cdb0d2091eae70cbaaf0": {
+		functionName: "googleRestStops_createServerFn_handler",
+		importer: () => import("./google-BPzoOX1h.mjs")
+	},
+	"29928070137f19f70d54ef51d806d8976f73f77f0bcdeaa6d0e5d4c9d28d1dbb": {
+		functionName: "sendTelegram_createServerFn_handler",
+		importer: () => import("./telegram-GimeISrX.mjs")
+	},
+	"62ffd6edc1cc4243deb2b890d5d800194452bf0bf1c37776a0b3ed3367af6317": {
+		functionName: "googleTestConnection_createServerFn_handler",
+		importer: () => import("./google-BPzoOX1h.mjs")
+	},
+	"6d90837f0ba939673b7b59e23608e55ecc51b47a0e17ba62e20008f351dfeffe": {
+		functionName: "integrationEnvStatus_createServerFn_handler",
+		importer: () => import("./google-BPzoOX1h.mjs")
 	},
 	"9e7c68d5485256129afeeada5f656ae7e6bcbf2e35f6d5c6773255a734e4c420": {
 		functionName: "computeRouteLegs_createServerFn_handler",
-		importer: () => import("./route-C3AF_vu3.mjs")
+		importer: () => import("./route-N5x2ZqUl.mjs")
+	},
+	"c7a88f0b97325a77ac422141c90f7ec510ace42c05a29886e44bb00ee1d7eb44": {
+		functionName: "googleRouteLegs_createServerFn_handler",
+		importer: () => import("./google-BPzoOX1h.mjs")
+	},
+	"d1042ebe7abc63b5bd2847affd55e0012ae132685d7eebf97474ebe70e3d8973": {
+		functionName: "googleRouteEta_createServerFn_handler",
+		importer: () => import("./google-BPzoOX1h.mjs")
 	}
 };
 async function getServerFnById(id, access) {
@@ -1508,7 +1532,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-CAHuqkNc.mjs").then((n) => n.t),
+		import("./router-DCm_HuB2.mjs").then((n) => n.t),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);

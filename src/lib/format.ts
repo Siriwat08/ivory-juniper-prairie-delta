@@ -37,6 +37,28 @@ export function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
+/** ข้อความอธิบายแหล่งที่มาของเส้นทางจาก routeMeta (ใช้แสดงในหน้าเที่ยววิ่ง/โหมดคนขับ) */
+export function routeMetaText(meta?: {
+  source: "google-routes" | "osrm" | "estimated";
+  trafficAware: boolean;
+  calculatedAt: string;
+  trafficDelayMin: number | null;
+}) {
+  if (!meta) return null;
+  const base =
+    meta.source === "google-routes"
+      ? "Google Routes (รถติดจริง)"
+      : meta.source === "osrm"
+        ? "OSRM (ไม่มีข้อมูลรถติด)"
+        : "ประมาณจากระยะตรง (เรียกแผนที่ไม่ได้)";
+  const delay =
+    meta.source === "google-routes" && meta.trafficDelayMin != null
+      ? ` · รถติดเพิ่ม ~${Math.round(meta.trafficDelayMin)} นาที`
+      : "";
+  const at = ` · คำนวณ ${formatDateTime(meta.calculatedAt)}`;
+  return `${base}${delay}${at}`;
+}
+
 export function todayAt(hours: number, minutes = 0) {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-CA", {

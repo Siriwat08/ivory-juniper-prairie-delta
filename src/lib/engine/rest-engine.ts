@@ -84,27 +84,6 @@ function pushStop(
   cursor.clock = end;
 }
 
-function sliceGeometry(
-  geometry: [number, number][],
-  fromFrac: number,
-  toFrac: number,
-): [number, number][] {
-  if (geometry.length < 2) return geometry;
-  const a = pointAlongPolyline(geometry, fromFrac);
-  const b = pointAlongPolyline(geometry, toFrac);
-  const mid: [number, number][] = [];
-  const total = polylineLengthKm(geometry);
-  let walked = 0;
-  for (let i = 1; i < geometry.length; i++) {
-    const p = geometry[i]!;
-    const prev = geometry[i - 1]!;
-    walked += haversineKm({ lat: prev[0], lng: prev[1] }, { lat: p[0], lng: p[1] });
-    const f = total === 0 ? 0 : walked / total;
-    if (f > fromFrac && f < toFrac) mid.push(p);
-  }
-  return [a, ...mid, b];
-}
-
 function pickRestAlongLeg(
   leg: RouteLeg,
   fromFrac: number,

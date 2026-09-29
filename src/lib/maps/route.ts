@@ -1,11 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { fallbackLeg } from "@/lib/engine/rest-engine";
 import { DEFAULT_POLICY } from "@/lib/engine/policy";
-import type { Place, Policy, RouteLeg } from "@/lib/engine/types";
+import type { Place, Policy, RouteLeg, RouteMeta } from "@/lib/engine/types";
+import { googleRouteLegs } from "@/lib/maps/google";
 
 type RouteRequest = {
   nodes: Place[];
   policy?: Policy;
+  /** Google Maps key จากหน้าตั้งค่า (ถ้าไม่ส่ง จะใช้ env GOOGLE_MAPS_API_KEY ฝั่งเซิร์ฟเวอร์) */
+  apiKey?: string;
 };
 
 async function osrmLegs(nodes: Place[]): Promise<RouteLeg[] | null> {
@@ -62,19 +65,71 @@ function sliceByFraction(
   return geometry.slice(start, end + 1);
 }
 
+/**
+ * ลำดับการคำนวณเส้นทาง (fallback chain):
+ *   1. Google Routes API (TRAFFIC_AWARE) — เมื่อมี key บนเซิร์ฟเวอร์ หรือคนขับเปิดใช้ในหน้าตั้งค่า
+ *      ได้เวลาตามสภาพจราจรจริง + trafficDelayMin
+ *   2. OSRM (โอเพนซอร์ส) — ไม่มีข้อมูลรถติด แต่ได้เส้นทางจริง
+ *   3. ประมาณการจากระยะตรง — ใช้ก่อนชั่วคราวเมื่อเรียกแผนที่ไม่ได้ทั้งคู่
+ * ทุกผลลัพธ์แนบ meta: แหล่งที่มา, trafficAware, เวลาที่คำนวณ, trafficDelayMin
+ */
 export const computeRouteLegs = createServerFn({ method: "POST" })
   .validator((input: RouteRequest) => input)
   .handler(async ({ data }) => {
     const policy = data.policy ?? DEFAULT_POLICY;
     const nodes = data.nodes;
+
+    // 1) Google Routes — traffic-aware (เรียกครั้งเดียวต่อการกดคำนวณ)
+    try {
+      const g = await googleRouteLegs({ data: { nodes, apiKey: data.apiKey } });
+      if (g.ok && g.legs.length > 0) {
+        const legs: RouteLeg[] = g.legs.map((l, i) => ({
+          fromId: nodes[i]!.id,
+          toId: nodes[i + 1]!.id,
+          distanceKm: l.distanceKm,
+          durationMin: l.durationMin,
+          geometry: l.geometry,
+          source: "routed",
+        }));
+        const trafficDelayMin = g.legs.reduce(
+          (s, l) => s + Math.max(0, l.durationMin - l.noTrafficMin),
+          0,
+        );
+        const meta: RouteMeta = {
+          source: "google-routes",
+          trafficAware: true,
+          calculatedAt: g.calculatedAt,
+          trafficDelayMin,
+        };
+        return { ok: true as const, legs, source: "routed" as const, meta };
+      }
+    } catch {
+      // fall through to OSRM
+    }
+
+    // 2) OSRM — เส้นทางจริงแต่ไม่มีข้อมูลรถติด
     try {
       const routed = await osrmLegs(nodes);
       if (routed && routed.length > 0) {
-        return { ok: true as const, legs: routed, source: "routed" as const };
+        const meta: RouteMeta = {
+          source: "osrm",
+          trafficAware: false,
+          calculatedAt: new Date().toISOString(),
+          trafficDelayMin: null,
+        };
+        return { ok: true as const, legs: routed, source: "routed" as const, meta };
       }
     } catch {
       // fall through to estimate
     }
+
+    // 3) ประมาณการจากระยะตรง
     const legs = nodes.slice(0, -1).map((from, i) => fallbackLeg(from, nodes[i + 1]!, policy));
-    return { ok: true as const, legs, source: "estimated" as const };
+    const meta: RouteMeta = {
+      source: "estimated",
+      trafficAware: false,
+      calculatedAt: new Date().toISOString(),
+      trafficDelayMin: null,
+    };
+    return { ok: true as const, legs, source: "estimated" as const, meta };
   });

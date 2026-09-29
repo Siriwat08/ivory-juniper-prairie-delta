@@ -58,6 +58,23 @@ export type RouteLeg = {
   source: Confidence;
 };
 
+/** แหล่งที่มาของการคำนวณเส้นทาง (ลำดับ fallback: google-routes → osrm → estimated) */
+export type RouteSource = "google-routes" | "osrm" | "estimated";
+
+/**
+ * ข้อมูลกำกับการคำนวณเส้นทาง — บันทึกทุกครั้งที่กด "คำนวณเส้นทาง"
+ * เพื่อให้รู้ว่า ETA ใช้ข้อมูลอะไร คำนวณเมื่อไร และรถติดเพิ่มกี่นาที
+ */
+export type RouteMeta = {
+  source: RouteSource;
+  /** true = คิดเวลาจากสภาพจราจรจริง ณ เวลาคำนวณ (Google Routes API) */
+  trafficAware: boolean;
+  /** เวลาที่คำนวณ (ISO) */
+  calculatedAt: string;
+  /** นาทีที่รถติดเพิ่มจากเวลาปกติ (null = ไม่มีข้อมูลรถติด) */
+  trafficDelayMin: number | null;
+};
+
 export type PlanStopType =
   | "depart"
   | "drive"
@@ -140,8 +157,10 @@ export type Trip = {
   currentStopSeq: number;
   delayMin: number;
   policySnapshot: Policy;
-  /** เส้นทางจริงแยกช่วง (จาก OSRM) ใช้ฉายตำแหน่ง GPS */
+  /** เส้นทางจริงแยกช่วง (จาก Google Routes / OSRM) ใช้ฉายตำแหน่ง GPS */
   legs?: RouteLeg[];
+  /** ข้อมูลกำกับการคำนวณเส้นทางล่าสุด (แหล่งที่มา/เวลา/รถติด) */
+  routeMeta?: RouteMeta;
   /** เวลาที่เริ่มขับรอบล่าสุด (null = ไม่ได้อยู่ระหว่างขับ) */
   enrouteSince?: string | null;
   /** เวลาที่เริ่มพักรอบล่าสุด (null = ไม่ได้อยู่ระหว่างพัก) */

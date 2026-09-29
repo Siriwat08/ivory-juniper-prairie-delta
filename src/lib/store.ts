@@ -11,6 +11,7 @@ import type {
   Policy,
   RestStop,
   RouteLeg,
+  RouteMeta,
   Trip,
   TripEventType,
   VehicleType,
@@ -47,7 +48,7 @@ type AppState = {
     startTime: string;
     title?: string;
   }) => Trip;
-  applyLegsAndPlan: (tripId: string, legs: RouteLeg[]) => void;
+  applyLegsAndPlan: (tripId: string, legs: RouteLeg[], meta?: RouteMeta) => void;
   saveRouteFromTrip: (tripId: string, note?: string) => void;
   deleteSavedRoute: (id: string) => void;
   setActive: (id: string | null) => void;
@@ -194,7 +195,7 @@ export const useDesk = create<AppState>()(
         set({ trips: [trip, ...get().trips], activeTripId: trip.id });
         return trip;
       },
-      applyLegsAndPlan: (tripId, legs) => {
+      applyLegsAndPlan: (tripId, legs, meta) => {
         const { trips, policy } = get();
         set({
           trips: trips.map((t) => {
@@ -209,7 +210,7 @@ export const useDesk = create<AppState>()(
               continuousMin: t.continuousMin,
               delayMin: t.delayMin,
             });
-            return { ...t, plan, legs };
+            return { ...t, plan, legs, ...(meta ? { routeMeta: meta } : {}) };
           }),
         });
       },

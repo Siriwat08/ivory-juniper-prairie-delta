@@ -18,6 +18,8 @@ export type GpsPosition = {
   speedKmh: number | null;
   at: string;
   source: "demo" | "device" | "api";
+  /** ความคลาดเคลื่อนของ GPS (เมตร) — มีจากเครื่องนี้/บางระบบ API */
+  accuracyM?: number | null;
 };
 
 export type GpsMode = "off" | "demo" | "device" | "api";
@@ -30,6 +32,8 @@ export type GpsApiConfig = {
   latPath: string;
   lngPath: string;
   speedPath: string;
+  /** field path ของความแม่นยำ (เมตร) ถ้าผู้ให้บริการส่งมา เช่น acc */
+  accuracyPath: string;
 };
 
 export const DEFAULT_GPS_API_CONFIG: GpsApiConfig = {
@@ -40,9 +44,36 @@ export const DEFAULT_GPS_API_CONFIG: GpsApiConfig = {
   latPath: "lat",
   lngPath: "lng",
   speedPath: "speed",
+  accuracyPath: "",
 };
 
 export type WatchdogLevel = "ok" | "watch" | "act";
+
+/** ความสดของตำแหน่ง GPS — ไม่ตัดสินอะไรจาก GPS ที่เก่า/ใช้ไม่ได้ */
+export type GpsQuality = "fresh" | "stale" | "unusable";
+
+/** เกณฑ์ตรวจ GPS เก่า/ใช้ไม่ได้ + ยืนยันออกนอกเส้นทางหลายจุดต่อเนื่อง */
+export const GPS_STALE_MIN = 3;
+export const GPS_UNUSABLE_MIN = 10;
+export const GPS_ACC_STALE_M = 100;
+export const GPS_ACC_UNUSABLE_M = 300;
+export const OFF_ROUTE_KM = 1.5;
+export const OFF_ROUTE_CONFIRM_ROUNDS = 2;
+
+export function gpsQuality(
+  pos: GpsPosition,
+  now: Date,
+): { quality: GpsQuality; ageMin: number } {
+  const ageMin = Math.max(0, (now.getTime() - new Date(pos.at).getTime()) / 60000);
+  const acc = pos.accuracyM ?? null;
+  let quality: GpsQuality = "fresh";
+  if (ageMin > GPS_UNUSABLE_MIN || (acc != null && acc > GPS_ACC_UNUSABLE_M)) {
+    quality = "unusable";
+  } else if (ageMin > GPS_STALE_MIN || (acc != null && acc > GPS_ACC_STALE_M)) {
+    quality = "stale";
+  }
+  return { quality, ageMin };
+}
 
 export type WatchdogResult = {
   level: WatchdogLevel;
@@ -61,6 +92,16 @@ export type WatchdogResult = {
   etaSource: "estimate" | "google";
   /** ข้อความ error ล่าสุดจาก Google (ถ้ามี — ระบบยังทำงานด้วยค่าประมาณตามเส้นทาง) */
   googleError?: string;
+  /** ความสดของตำแหน่ง GPS ที่ใช้ประเมินครั้งนี้ */
+  gpsQuality: GpsQuality;
+  /** อายุตำแหน่ง GPS (นาที) */
+  gpsAgeMin: number;
+  /** ความแม่นยำที่รายงาน (เมตร) — null = ไม่ทราบ */
+  gpsAccuracyM: number | null;
+  /** ออกนอกเส้นทางที่ยืนยันแล้วเท่านั้น (เหลื่อมเกินเกณฑ์หลายรอบเช็คต่อเนื่อง — ไม่ตัดสินจาก GPS จุดเดียว) */
+  offRoute: boolean;
+  /** จำนวนรอบเช็คต่อเนื่องที่เหลื่อมเกินเกณฑ์ */
+  offRouteStreak: number;
 };
 
 /* ---------------- เส้นทางเต็มของเที่ยววิ่ง ---------------- */
@@ -134,6 +175,7 @@ export function devicePosition(): Promise<GpsPosition> {
           speedKmh: p.coords.speed != null ? p.coords.speed * 3.6 : null,
           at: new Date().toISOString(),
           source: "device",
+          accuracyM: p.coords.accuracy ?? null,
         }),
       (err) => reject(new Error(`อ่าน GPS เครื่องนี้ไม่ได้ (${err.message})`)),
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
@@ -183,12 +225,14 @@ export async function apiPosition(cfg: GpsApiConfig): Promise<GpsPosition> {
     throw new Error("อ่านพิกัดจากผลลัพธ์ไม่ได้ — ตรวจ lat/lng path อีกครั้ง");
   }
   const speedRaw = cfg.speedPath ? Number(extractPath(body, cfg.speedPath)) : NaN;
+  const accRaw = cfg.accuracyPath ? Number(extractPath(body, cfg.accuracyPath)) : NaN;
   return {
     lat,
     lng,
     speedKmh: Number.isFinite(speedRaw) ? speedRaw : null,
     at: new Date().toISOString(),
     source: "api",
+    accuracyM: Number.isFinite(accRaw) ? accRaw : null,
   };
 }
 
@@ -297,6 +341,11 @@ export function runWatchdog(
     message,
     alternatives,
     etaSource: "estimate",
+    gpsQuality: "fresh",
+    gpsAgeMin: 0,
+    gpsAccuracyM: pos.accuracyM ?? null,
+    offRoute: false,
+    offRouteStreak: 0,
   };
 }
 
@@ -523,10 +572,13 @@ type GpsLiveState = {
   watchdog: WatchdogResult | null;
   lastCheckAt: string | null;
   demoFactor: number;
+  /** รอบเช็คต่อเนื่องที่รถเหลื่อมเส้นทางเกินเกณฑ์ (รีเซ็ตเมื่อกลับเข้าเส้นทาง) */
+  offRouteStreak: number;
   setStatus: (status: GpsLiveState["status"], error?: string | null) => void;
   setPosition: (pos: GpsPosition) => void;
   setWatchdog: (wd: WatchdogResult | null) => void;
   setDemoFactor: (f: number) => void;
+  setOffRouteStreak: (n: number) => void;
   reset: () => void;
 };
 
@@ -537,12 +589,22 @@ export const useGpsLive = create<GpsLiveState>()((set) => ({
   watchdog: null,
   lastCheckAt: null,
   demoFactor: 1,
+  offRouteStreak: 0,
   setStatus: (status, error = null) => set({ status, error }),
   setPosition: (pos) => set({ pos }),
   setWatchdog: (watchdog) => set({ watchdog }),
   setDemoFactor: (demoFactor) => set({ demoFactor: Math.min(3, Math.max(1, demoFactor)) }),
+  setOffRouteStreak: (offRouteStreak) => set({ offRouteStreak }),
   reset: () =>
-    set({ status: "idle", error: null, pos: null, watchdog: null, lastCheckAt: null, demoFactor: 1 }),
+    set({
+      status: "idle",
+      error: null,
+      pos: null,
+      watchdog: null,
+      lastCheckAt: null,
+      demoFactor: 1,
+      offRouteStreak: 0,
+    }),
 }));
 
 /** ดึงตำแหน่งรถตามโหมดที่เลือก + รัน watchdog แล้วเก็บผลลง live store */
@@ -576,6 +638,21 @@ export async function checkGpsNow(
       continuousNow,
       mode === "demo" ? new Date(trip.clock) : nowAt,
     );
+
+    // ความสดของ GPS — แสดงสถานะให้คนขับ/ผู้ดูแลเห็นชัด ไม่ประเมินจาก GPS เก่าเงียบ ๆ
+    const { quality, ageMin } = gpsQuality(pos, mode === "demo" ? new Date(trip.clock) : nowAt);
+    wdBase.gpsQuality = quality;
+    wdBase.gpsAgeMin = ageMin;
+
+    // ยืนยัน "ออกนอกเส้นทาง" ด้วยหลายจุดต่อเนื่อง — ไม่เตือนจาก GPS จุดเดียว
+    // (กัน GPS เด้ง/อยู่ในอุโมงค์) และไม่นับตอนจอดพัก (จุดพักอาจเบี่ยงออกจากเส้นทางได้)
+    const offNow = wdBase.offRouteKm > OFF_ROUTE_KM && trip.status === "enroute";
+    const live2 = useGpsLive.getState();
+    const streak = offNow ? live2.offRouteStreak + 1 : 0;
+    live2.setOffRouteStreak(streak);
+    wdBase.offRouteStreak = streak;
+    wdBase.offRoute = offNow && streak >= OFF_ROUTE_CONFIRM_ROUNDS;
+
     const wd = useGpsSettings.getState().googleEnabled
       ? await enrichWithGoogle(trip, pos, wdBase, policy, continuousNow)
       : wdBase;

@@ -18,10 +18,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { useDesk } from "@/lib/store";
 import { computeRouteLegs } from "@/lib/maps/route";
+import { useGpsSettings } from "@/lib/gps/gps";
 import { RouteMap } from "@/components/trip/RouteMap";
 import { DrivingStep } from "@/components/drive/DrivingStep";
 import { PLACES } from "@/lib/data/places";
-import { formatDateTime, formatDuration } from "@/lib/format";
+import { formatDateTime, formatDuration, routeMetaText } from "@/lib/format";
 import type { Place } from "@/lib/engine/types";
 
 export const Route = createFileRoute("/drive")({ component: DrivePage });
@@ -349,10 +350,13 @@ function SummaryStep({
         title: pending.title,
       });
       try {
+        // ถ้าเปิดใช้ Google ไว้ คำนวณแบบใช้รถติดจริง — ไม่งั้น OSRM (fallback อัตโนมัติทั้งคู่)
+        const gps = useGpsSettings.getState();
+        const apiKey = gps.googleEnabled ? gps.googleMapsKey.trim() || undefined : undefined;
         const routed = await computeRouteLegs({
-          data: { nodes: [pending.origin, ...pending.waypoints, pending.destination] },
+          data: { nodes: [pending.origin, ...pending.waypoints, pending.destination], apiKey },
         });
-        if (routed.ok) applyLegsAndPlan(trip.id, routed.legs);
+        if (routed.ok) applyLegsAndPlan(trip.id, routed.legs, routed.meta);
       } catch {
         // ถ้าเรียกแผนที่ไม่ได้ ยังมีแผนประมาณจากระยะตรงให้ใช้ก่อน
       }
@@ -392,8 +396,9 @@ function SummaryStep({
         <div className="mt-4 rounded-2xl bg-surface-2/60 p-4 text-sm">
           <p className="font-medium">ยังไม่มีการคำนวณใด ๆ ในขั้นนี้</p>
           <p className="mt-1 text-muted">
-            กด "คำนวณเส้นทาง" — ระบบจะเรียกแผนที่ (OSRM) คำนวณระยะทาง เวลาเดินทาง
-            และจุดพักที่ต้องแวะตามกฎ ขับ 4 ชม. → พัก 30 นาที ให้ครั้งเดียว ณ ตอนนั้น
+            กด "คำนวณเส้นทาง" — ระบบจะเรียกแผนที่ (Google ถ้าเปิดใช้ในหน้าตั้งค่า หรือ OSRM
+            ถ้าไม่มี) คำนวณระยะทาง เวลาเดินทาง และจุดพักที่ต้องแวะตามกฎ ขับ 4 ชม. → พัก 30 นาที
+            ให้ครั้งเดียว ณ ตอนนั้น
           </p>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
@@ -438,7 +443,8 @@ function ResultStep({
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="navy">ประมาณการ</Badge>
           <Badge tone={trip.plan.source === "routed" ? "ok" : "warn"}>
-            {trip.plan.source === "routed" ? "จากแผนที่ OSRM" : "ประมาณจากระยะตรง (เรียกแผนที่ไม่ได้)"}
+            {routeMetaText(trip.routeMeta)?.split(" · ")[0] ??
+              (trip.plan.source === "routed" ? "จากแผนที่ OSRM" : "ประมาณจากระยะตรง (เรียกแผนที่ไม่ได้)")}
           </Badge>
         </div>
         <h2 className="mt-3 font-display text-xl font-semibold">{trip.title}</h2>

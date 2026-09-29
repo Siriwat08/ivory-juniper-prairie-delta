@@ -7,6 +7,7 @@ import { PLACES } from "@/lib/data/places";
 import { uid } from "@/lib/utils";
 import type { Place } from "@/lib/engine/types";
 import { useDesk } from "@/lib/store";
+import { useGpsSettings } from "@/lib/gps/gps";
 import { computeRouteLegs } from "@/lib/maps/route";
 
 function copyPlace(p: Place, kind?: Place["kind"]): Place {
@@ -49,10 +50,13 @@ export function PlannerForm() {
       title: `${origin.name} → ${destination.name}`,
     });
     try {
+      // ถ้าเปิดใช้ Google ในหน้าตั้งค่าไว้ จะส่ง key ขึ้นเซิร์ฟเวอร์เพื่อคำนวณแบบใช้รถติดจริง
+      const gps = useGpsSettings.getState();
+      const apiKey = gps.googleEnabled ? gps.googleMapsKey.trim() || undefined : undefined;
       const routed = await computeRouteLegs({
-        data: { nodes: [origin, ...waypoints, destination] },
+        data: { nodes: [origin, ...waypoints, destination], apiKey },
       });
-      if (routed.ok) applyLegsAndPlan(trip.id, routed.legs);
+      if (routed.ok) applyLegsAndPlan(trip.id, routed.legs, routed.meta);
     } catch {
       // keep fallback plan
     } finally {

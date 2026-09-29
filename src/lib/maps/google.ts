@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "@/lib/env.server";
+import { decodePolyline } from "@/lib/maps/polyline";
+import type { Place } from "@/lib/engine/types";
 
 /* ============================================================
  * Google Maps Platform — ทางเซิร์ฟเวอร์ (key ไม่โผล่ในเบราว์เซอร์)
@@ -111,6 +113,121 @@ export const googleRouteEta = createServerFn({ method: "POST" })
     }
   });
 
+/* ---------------- Routes API: เส้นทางเต็มแบบใช้รถติดจริง (ตอนคำนวณแผน) ---------------- */
+
+type GoogleLegsInput = {
+  /** จุดตามลำดับ: ต้นทาง → จุดแวะ... → ปลายทาง (>= 2 จุด) */
+  nodes: Place[];
+  apiKey?: string;
+};
+
+export type GoogleLeg = {
+  distanceKm: number;
+  /** เวลาตามสภาพจราจรปัจจุบัน (TRAFFIC_AWARE) */
+  durationMin: number;
+  /** เวลาโดยไม่คิดรถติด (staticDuration) — ใช้คิด trafficDelay */
+  noTrafficMin: number;
+  geometry: [number, number][];
+};
+
+type GoogleLegsOutput =
+  | { ok: true; legs: GoogleLeg[]; calculatedAt: string }
+  | { ok: false; error: string };
+
+/**
+ * คำนวณเส้นทางเต็มแยกช่วงด้วย Google Routes API (TRAFFIC_AWARE) ณ เวลาที่เรียก
+ * ใช้ตอน "คำนวณเส้นทาง" ครั้งเดียวต่อเที่ยว — ไม่เรียกซ้ำระหว่าง render
+ * เรียกไม่สำเร็จให้ผู้เรียก fallback ไป OSRM → ประมาณการตามลำดับ
+ */
+export const googleRouteLegs = createServerFn({ method: "POST" })
+  .validator((input: GoogleLegsInput) => input)
+  .handler(async ({ data }): Promise<GoogleLegsOutput> => {
+    const key = resolveKey(data.apiKey);
+    if (!key) return { ok: false, error: "ยังไม่ได้ตั้งค่า Google Maps API key" };
+    const nodes = data.nodes;
+    if (nodes.length < 2) return { ok: false, error: "จุดต้นทาง-ปลายทางไม่ครบ" };
+
+    const latLng = (p: Place) => ({
+      location: { latLng: { latitude: p.lat, longitude: p.lng } },
+    });
+    const body = {
+      origin: latLng(nodes[0]!),
+      destination: latLng(nodes[nodes.length - 1]!),
+      ...(nodes.length > 2
+        ? { intermediates: nodes.slice(1, -1).map(latLng) }
+        : {}),
+      travelMode: "DRIVE",
+      routingPreference: "TRAFFIC_AWARE",
+      computeAlternativeRoutes: false,
+      languageCode: "th",
+      units: "METRIC",
+    };
+    try {
+      const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": key,
+          "X-Goog-FieldMask":
+            "routes.legs.distanceMeters,routes.legs.duration,routes.legs.staticDuration,routes.legs.polyline.encodedPolyline",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(12000),
+      });
+      const json: unknown = await res.json().catch(() => null);
+      if (!res.ok) return { ok: false, error: readableGoogleError(res.status, json) };
+      const legs = (
+        json as {
+          routes?: {
+            legs?: {
+              distanceMeters?: number;
+              duration?: string;
+              staticDuration?: string;
+              polyline?: { encodedPolyline?: string };
+            }[];
+          }[];
+        }
+      )?.routes?.[0]?.legs;
+      if (!legs || legs.length !== nodes.length - 1) {
+        return {
+          ok: false,
+          error: "โครงสร้างเส้นทางจาก Google ไม่ตรงกับจุดแวะ — เปลี่ยนไปใช้ OSRM แทน",
+        };
+      }
+      const parseSec = (s?: string) => (s ? Number(s.replace(/s$/, "")) : NaN);
+      const out: GoogleLeg[] = [];
+      for (let i = 0; i < legs.length; i++) {
+        const leg = legs[i]!;
+        const durationMin = parseSec(leg.duration) / 60;
+        const noTrafficMin = (parseSec(leg.staticDuration) || durationMin) / 60;
+        if (!Number.isFinite(durationMin) || leg.distanceMeters == null) {
+          return { ok: false, error: "อ่านระยะทาง/เวลาจาก Google ไม่ได้" };
+        }
+        const geometry = leg.polyline?.encodedPolyline
+          ? decodePolyline(leg.polyline.encodedPolyline)
+          : [
+              [nodes[i]!.lat, nodes[i]!.lng],
+              [nodes[i + 1]!.lat, nodes[i + 1]!.lng],
+            ] as [number, number][];
+        out.push({
+          distanceKm: leg.distanceMeters / 1000,
+          durationMin,
+          noTrafficMin: Number.isFinite(noTrafficMin) ? noTrafficMin : durationMin,
+          geometry: geometry.length >= 2 ? geometry : [
+            [nodes[i]!.lat, nodes[i]!.lng],
+            [nodes[i + 1]!.lat, nodes[i + 1]!.lng],
+          ],
+        });
+      }
+      return { ok: true, legs: out, calculatedAt: new Date().toISOString() };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : "เรียก Google Routes API ไม่สำเร็จ",
+      };
+    }
+  });
+
 /* ---------------- Places API (New): จุดพักจริงใกล้พิกัด ---------------- */
 
 export type GooglePlaceStop = {
@@ -208,3 +325,12 @@ export const googleTestConnection = createServerFn({ method: "POST" })
       data: { lat: 14.251, lng: 100.731, radiusM: 5000, apiKey: data?.apiKey },
     });
   });
+
+/** ตรวจว่าเซิร์ฟเวอร์ตั้ง env ที่จำเป็นไว้หรือยัง (ใช้ในหน้า "ความพร้อมใช้งานจริง") */
+export const integrationEnvStatus = createServerFn({ method: "POST" }).handler(
+  async () => ({
+    googleEnvKey: Boolean(env("GOOGLE_MAPS_API_KEY")),
+    telegramEnvToken: Boolean(env("TELEGRAM_BOT_TOKEN")),
+    telegramEnvChat: Boolean(env("TELEGRAM_CHAT_ID")),
+  }),
+);

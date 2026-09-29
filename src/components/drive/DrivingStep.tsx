@@ -3,6 +3,7 @@ import {
   CarFront,
   Coffee,
   Flag,
+  Map as MapIcon,
   Navigation,
   Pause,
   Play,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input, Label } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { useDesk, continuousNowOf, restRemainingMin } from "@/lib/store";
 import {
   checkGpsNow,
@@ -28,13 +29,56 @@ import { alertActBeep, alertWatchBeep } from "@/lib/gps/alerts";
 import { sendTelegram } from "@/lib/notify/telegram";
 import { googleTestConnection } from "@/lib/maps/google";
 import { formatDateTime } from "@/lib/format";
-import type { Policy, RestStop, Trip } from "@/lib/engine/types";
+import type { Policy, Trip } from "@/lib/engine/types";
 
 const POLL_MS = 7 * 60 * 1000; // เช็ค GPS ทุก 7 นาที (อยู่ในช่วง 5–10 นาทีตามนโยบาย)
 
 function mmss(min: number) {
   const total = Math.max(0, Math.round(min * 60));
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Wake Lock: กันมือถือคนขับปิดหน้าจอเองระหว่างเที่ยววิ่ง
+ * นาฬิกาขับต่อเนื่อง/นับถอยหลังพัก 30:00 จะได้เห็นตลอด
+ * (เบราว์เซอร์ที่ไม่รองรับจะเงียบ ๆ ไม่มีผลอะไร)
+ */
+function useWakeLock(active: boolean) {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!active || typeof navigator === "undefined") return;
+    type Sentinel = { release: () => Promise<void>; addEventListener: (t: string, cb: () => void) => void };
+    const wakeLock = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<Sentinel> } })
+      .wakeLock;
+    if (!wakeLock) return;
+    let lock: Sentinel | null = null;
+    let cancelled = false;
+    const request = async () => {
+      try {
+        if (cancelled || lock || document.visibilityState !== "visible") return;
+        lock = await wakeLock.request("screen");
+        lock.addEventListener("release", () => {
+          lock = null;
+          setHeld(false);
+        });
+        setHeld(true);
+      } catch {
+        setHeld(false);
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void request();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    void request();
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      void lock?.release().catch(() => {});
+      lock = null;
+    };
+  }, [active]);
+  return held;
 }
 
 export function DrivingStep({
@@ -68,6 +112,8 @@ export function DrivingStep({
   const [showSettings, setShowSettings] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const lastLevel = useRef<WatchdogResult["level"] | "off">("off");
+
+  const wakeHeld = useWakeLock(trip.status === "enroute" || trip.status === "resting");
 
   const continuousNow = continuousNowOf(trip);
   const restLeft = restRemainingMin(trip, policy);
@@ -173,6 +219,12 @@ export function DrivingStep({
             {trip.status === "resting" ? "พักอยู่" : trip.status === "enroute" ? "ขับอยู่" : trip.status === "completed" ? "ถึงปลายทางแล้ว" : "ยังไม่เริ่ม"}
           </Badge>
         </div>
+        {wakeHeld ? (
+          <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-ok-fg px-2 py-0.5 text-[11px] text-ok">
+            <MapIcon className="size-3" />
+            ป้องกันหน้าจอปิดอยู่ — นาฬิกาจะเดินต่อเนื่องระหว่างเที่ยว
+          </p>
+        ) : null}
 
         {trip.status === "resting" ? (
           <div className="mt-5 rounded-2xl bg-rest-fg p-5 text-center">
@@ -298,6 +350,17 @@ export function DrivingStep({
                 <span>· ล่าช้า ~{Math.round(wd.delayMin)} นาที</span>
                 {wd.nextRestName ? <span>· จุดพักถัดไป {Math.round(wd.nextRestEtaMin ?? 0)} นาที</span> : null}
               </div>
+              {wd.offRoute ? (
+                <div className="mt-3 rounded-xl border border-warn/40 bg-warn-fg p-3 text-xs">
+                  <p className="font-medium text-warn">
+                    ตรวจพบออกนอกเส้นทาง (ยืนยันจาก {wd.offRouteStreak} รอบเช็คต่อเนื่อง)
+                  </p>
+                  <p className="mt-1 text-muted">
+                    เหลื่อมจากเส้นทาง ~{wd.offRouteKm.toFixed(1)} กม. — อาจเบี่ยงไปแวะ/เลี่ยงถนน
+                    ให้ตรวจสอบตำแหน่งจริงก่อนตัดสินใจ (ระบบจะเตือนเมื่อกลับเข้าเส้นทางหรือเหลื่อมต่อเนื่อง)
+                  </p>
+                </div>
+              ) : null}
               {wd.level === "act" && wd.alternatives.length > 0 ? (
                 <Button variant="danger" className="mt-3" onClick={() => setShowAlt(true)}>
                   ดูจุดพักแนะนำ ({wd.alternatives.length})
@@ -363,6 +426,28 @@ export function DrivingStep({
               ) : (
                 <p className="text-muted">ยังไม่มีตำแหน่ง — กด \"เช็คตอนนี้\" เพื่อดึงครั้งแรก</p>
               )}
+              {pos && wd ? (
+                <p className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    tone={
+                      wd.gpsQuality === "fresh" ? "ok" : wd.gpsQuality === "stale" ? "warn" : "danger"
+                    }
+                  >
+                    {wd.gpsQuality === "fresh"
+                      ? "GPS สด"
+                      : wd.gpsQuality === "stale"
+                        ? "GPS เก่า"
+                        : "GPS ใช้ไม่ได้"}
+                  </Badge>
+                  <span className="text-xs text-muted">
+                    อายุ {wd.gpsAgeMin < 1 ? "ไม่ถึง 1" : Math.round(wd.gpsAgeMin)} นาที
+                    {wd.gpsAccuracyM != null ? ` · ความแม่น ±${Math.round(wd.gpsAccuracyM)} ม.` : ""}
+                    {wd.gpsQuality !== "fresh"
+                      ? " — ระบบจะไม่ตัดสินแผนจากตำแหน่งนี้จนกว่า GPS จะกลับมาสด"
+                      : ""}
+                  </span>
+                </p>
+              ) : null}
               <p className="text-xs text-muted">เช็คอัตโนมัติทุก 7 นาทีระหว่างเที่ยววิ่ง</p>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -497,6 +582,7 @@ function GpsSettingsPanel({ onSaved }: { onSaved: () => void }) {
   const [latPath, setLatPath] = useState(apiConfig.latPath);
   const [lngPath, setLngPath] = useState(apiConfig.lngPath);
   const [speedPath, setSpeedPath] = useState(apiConfig.speedPath);
+  const [accuracyPath, setAccuracyPath] = useState(apiConfig.accuracyPath);
   const [token, setToken] = useState(botToken);
   const [chat, setChat] = useState(chatId);
   const [googleKey, setGoogleKey] = useState(googleMapsKey);
@@ -528,13 +614,15 @@ function GpsSettingsPanel({ onSaved }: { onSaved: () => void }) {
           {method === "POST" ? (
             <Input placeholder='Body (JSON) เช่น {"vehicleId":"รถ-01"}' value={bodyJson} onChange={(e) => setBodyJson(e.target.value)} />
           ) : null}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Input placeholder="lat path" value={latPath} onChange={(e) => setLatPath(e.target.value)} />
             <Input placeholder="lng path" value={lngPath} onChange={(e) => setLngPath(e.target.value)} />
             <Input placeholder="speed path (ถ้ามี)" value={speedPath} onChange={(e) => setSpeedPath(e.target.value)} />
+            <Input placeholder="accuracy path (ถ้ามี)" value={accuracyPath} onChange={(e) => setAccuracyPath(e.target.value)} />
           </div>
           <p className="text-xs text-muted">
             ตัวอย่าง: ถ้า API ตอบ {"{"}"d":[{"{"}"lat":14.2,"lng":100.7{"}"}]{"}"} → ใส่ lat path เป็น d.0.lat
+            · accuracy หน่วยเมตร (เช่น acc) ช่วยให้ระบบรู้ว่า GPS แม่นพอจะเชื่อได้ไหม
           </p>
         </div>
       </div>
@@ -607,7 +695,7 @@ function GpsSettingsPanel({ onSaved }: { onSaved: () => void }) {
         variant="navy"
         size="sm"
         onClick={() => {
-          setApiConfig({ url, method, headersJson, bodyJson, latPath, lngPath, speedPath });
+          setApiConfig({ url, method, headersJson, bodyJson, latPath, lngPath, speedPath, accuracyPath });
           setTelegram(token.trim(), chat.trim());
           setGoogle(googleKey.trim(), googleOn);
           onSaved();

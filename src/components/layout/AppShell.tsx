@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  ClipboardCheck,
   ClipboardList,
   Compass,
   MessageSquareText,
@@ -17,6 +18,7 @@ const NAV = [
   { to: "/", label: "โต๊ะปฏิบัติการ", short: "โต๊ะ", icon: ClipboardList },
   { to: "/plan", label: "วางแผนเที่ยว", short: "วางแผน", icon: Compass },
   { to: "/agent", label: "Agent", short: "Agent", icon: MessageSquareText },
+  { to: "/readiness", label: "ความพร้อมใช้จริง", short: "พร้อมไหม", icon: ClipboardCheck },
   { to: "/policy", label: "นโยบาย / ช่องว่าง", short: "นโยบาย", icon: ShieldAlert },
 ] as const;
 
@@ -114,7 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="flex-1 px-4 py-5 pb-24 lg:px-8 lg:py-7 lg:pb-7">
           {children}
         </main>
-        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-border bg-surface/95 backdrop-blur-sm lg:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-border bg-surface/95 backdrop-blur-sm lg:hidden">
           {NAV.map((item) => {
             const active =
               item.to === "/"

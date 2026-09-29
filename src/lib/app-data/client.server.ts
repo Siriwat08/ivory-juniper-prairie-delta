@@ -278,7 +278,10 @@ function tokenIdentityKey(token: string): string {
             .digest("base64url");
         }
       }
-    } catch {}
+    } catch {
+      // Not a decodable identity JWT (or malformed claims) — fall through to
+      // the opaque hash below so token identity stays deterministic.
+    }
   }
   return createHash("sha256").update(token).digest("base64url");
 }

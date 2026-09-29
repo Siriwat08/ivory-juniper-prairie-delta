@@ -43,6 +43,9 @@ function Home() {
             <Button asChild variant="outline">
               <Link to="/agent">คุยกับผู้เชี่ยวชาญ</Link>
             </Button>
+            <Button asChild variant="outline">
+              <Link to="/readiness">ข้อมูลก่อนใช้จริง</Link>
+            </Button>
           </div>
           <dl className="mt-8 grid grid-cols-3 gap-3 border-t border-border pt-5">
             <Stat k="เพดานขับ" v={`${policy.maxContinuousMin / 60} ชม.`} />

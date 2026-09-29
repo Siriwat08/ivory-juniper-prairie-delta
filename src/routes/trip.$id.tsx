@@ -6,7 +6,7 @@ import { RestGauge } from "@/components/trip/RestGauge";
 import { RouteMap } from "@/components/trip/RouteMap";
 import { Timeline } from "@/components/trip/Timeline";
 import { summarizeRisk } from "@/lib/engine/rest-engine";
-import { formatDateTime, formatDuration } from "@/lib/format";
+import { formatDateTime, formatDuration, routeMetaText } from "@/lib/format";
 import { useDesk } from "@/lib/store";
 import { VEHICLE_LABEL } from "@/lib/engine/policy";
 import { useEffect } from "react";
@@ -91,7 +91,9 @@ function TripPage() {
         <Mini k="เวลาพัก" v={formatDuration(trip.plan.totalRestMin)} />
         <Mini k="ขนถ่าย" v={formatDuration(trip.plan.totalServiceMin)} />
       </dl>
-      <p className="text-xs text-muted">{risk.detail} · แหล่งข้อมูลเส้นทาง: {trip.plan.source === "routed" ? "OSRM" : "ประมาณการ"}</p>
+      <p className="text-xs text-muted">
+        {risk.detail} · แหล่งข้อมูลเส้นทาง: {routeMetaText(trip.routeMeta) ?? (trip.plan.source === "routed" ? "OSRM" : "ประมาณการ")}
+      </p>
 
       <Timeline stops={trip.plan.stops} />
 

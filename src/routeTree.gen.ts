@@ -14,6 +14,7 @@ import { Route as AgentRouteImport } from './routes/agent'
 import { Route as DriveRouteImport } from './routes/drive'
 import { Route as PlanRouteImport } from './routes/plan'
 import { Route as PolicyRouteImport } from './routes/policy'
+import { Route as ReadinessRouteImport } from './routes/readiness'
 import { Route as TripIdRouteImport } from './routes/trip.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +42,11 @@ const PolicyRoute = PolicyRouteImport.update({
   path: '/policy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReadinessRoute = ReadinessRouteImport.update({
+  id: '/readiness',
+  path: '/readiness',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TripIdRoute = TripIdRouteImport.update({
   id: '/trip/$id',
   path: '/trip/$id',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/drive': typeof DriveRoute
   '/plan': typeof PlanRoute
   '/policy': typeof PolicyRoute
+  '/readiness': typeof ReadinessRoute
   '/trip/$id': typeof TripIdRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/drive': typeof DriveRoute
   '/plan': typeof PlanRoute
   '/policy': typeof PolicyRoute
+  '/readiness': typeof ReadinessRoute
   '/trip/$id': typeof TripIdRoute
 }
 export interface FileRoutesById {
@@ -70,14 +78,25 @@ export interface FileRoutesById {
   '/drive': typeof DriveRoute
   '/plan': typeof PlanRoute
   '/policy': typeof PolicyRoute
+  '/readiness': typeof ReadinessRoute
   '/trip/$id': typeof TripIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/agent' | '/drive' | '/plan' | '/policy' | '/trip/$id'
+  fullPaths:
+    '/' | '/agent' | '/drive' | '/plan' | '/policy' | '/readiness' | '/trip/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/agent' | '/drive' | '/plan' | '/policy' | '/trip/$id'
-  id: '__root__' | '/' | '/agent' | '/drive' | '/plan' | '/policy' | '/trip/$id'
+  to:
+    '/' | '/agent' | '/drive' | '/plan' | '/policy' | '/readiness' | '/trip/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/agent'
+    | '/drive'
+    | '/plan'
+    | '/policy'
+    | '/readiness'
+    | '/trip/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -86,6 +105,7 @@ export interface RootRouteChildren {
   DriveRoute: typeof DriveRoute
   PlanRoute: typeof PlanRoute
   PolicyRoute: typeof PolicyRoute
+  ReadinessRoute: typeof ReadinessRoute
   TripIdRoute: typeof TripIdRoute
 }
 
@@ -126,6 +146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/readiness': {
+      id: '/readiness'
+      path: '/readiness'
+      fullPath: '/readiness'
+      preLoaderRoute: typeof ReadinessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/trip/$id': {
       id: '/trip/$id'
       path: '/trip/$id'
@@ -142,6 +169,7 @@ const rootRouteChildren: RootRouteChildren = {
   DriveRoute: DriveRoute,
   PlanRoute: PlanRoute,
   PolicyRoute: PolicyRoute,
+  ReadinessRoute: ReadinessRoute,
   TripIdRoute: TripIdRoute,
 }
 export const routeTree = rootRouteImport
